@@ -107,3 +107,65 @@ Secondary CTA: **View Source**
 - MDN CORS-enabled canvas: https://developer.mozilla.org/en-US/docs/Web/HTML/How_to/CORS_enabled_image
 - NIST SP 800-90B: https://csrc.nist.gov/pubs/sp/800/90/b/final
 - NYC DOT data feeds: https://www.nyc.gov/html/dot/html/about/datafeeds.shtml
+
+## Confirmed design decisions — 2026-11-25
+
+### Development workflow
+
+- **Recover first:** user will provide the latest local source package. Inventory and run it before refactoring.
+- **Working mechanic first, generic later:** implement a simple end-to-end source path, prove it works, then extract reusable contracts only where needed. Avoid speculative wrappers/functions and premature abstraction.
+- **Preserve behavior:** compare existing dashboard, color-coded source health, camera filters, generated JSON, and measurement graphs with the planned target. Classify each existing feature as Keep / Adapt / Remove / Missing.
+- Each stage needs evidence: test result, reproducible run command, screenshot or JSON artifact as appropriate, and a decision checkpoint. No silent code rewrites.
+
+### Multi-source model (design)
+
+- A source registry identifies inputs by **stable internal Source ID**, not only OS device identifiers or IP address. Changing hardware must not break saved experiment references.
+- Source adapters, introduced incrementally: USB/UVC camera, OS-listed virtual camera, computer-local video file/synthetic fixture, consented network IP camera via a trusted RTSP/HTTP/MJPEG-to-web bridge where appropriate, and permitted public web feeds.
+- Browser device selectors use supported `enumerateDevices`/`getUserMedia` with permission; those select **devices connected to the browsing device**, not cameras connected to another PC.
+- A Windows camera collector connects to the remote backend through an authenticated outbound channel. Phone dashboard sees approved preview/metrics and controls the collector with access checks. For initial LAN testing, use a private authenticated path; never require opening a public port to the camera.
+- The interface can activate one or multiple sources independently, rename them, switch sources, select sampling frequency and sampling region, assign optional experimental weights, and compare **per-source vs combined** observations.
+- Multi-source fusion must detect correlated / identical inputs and source freeze/failure. A second camera is not automatically an independent entropy source; raw concatenation and XOR alone are not evidence of added secure entropy.
+- Default to metadata/digests and low-rate thumbnails only when approved; never publish raw personal camera streams or IP-camera credentials.
+
+### Measurement/reporting contract
+
+Use precise, separately labeled metrics instead of one misleading "randomness percentage":
+
+| Metric | Meaning | Percentage allowed? |
+|---|---|---|
+| Ones fraction | Number of 1 bits divided by all measured bits | Yes; 50% is expected for balanced bits, not 50% quality |
+| Pixel change ratio | Fraction of pixels that changed per sampled interval | Yes; motion is not entropy |
+| Source uptime / frozen frame ratio | Source health and repeated frames | Yes |
+| Statistical test pass count | Fraction of defined tests passing, for declared sample size and conditions | Yes, but not a security percentage |
+| Byte distribution, runs, autocorrelation, cross-source correlation | Evidence about distributions and relationships | Show raw statistics, graphs and confidence intervals |
+| Estimated min-entropy | Model-dependent conservative source estimate | Bits per sample, and uncertainty, never "percent secure" |
+
+Comparisons use the *same* sample lengths and processing rules for (A) OS CSPRNG baseline, (B) each camera alone, (C) selected combined experimental pool, (D) known synthetic/deterministic negative controls, and optionally (E) independently obtained physical sources. Record input sample lengths, dropped frames, filters, extraction, source versions and test versions.
+
+- NIST SP 800-22 is a statistical test suite; passing is **not** proof of unpredictability or cryptographic suitability.
+- NIST SP 800-90B entropy-source modeling, health testing, and conservative entropy estimation are a separate, higher bar. Unvalidated video streams receive no credited secure-entropy bits.
+- Each experiment exports stable versioned JSON with inputs/provenance, sample configuration, output digests where safe, metrics, confidence interval or uncertainty, and reference controls. **No secret cryptographic keys in experiment files.**
+- Traffic-light indicators must label what they grade (source health or test status), never ambiguous "secure" scores.
+
+### Crypto experiment separation
+
+- **Production/security lane:** use existing reviewed cryptographic primitives and platform CSPRNG. Keys and nonces/IVs follow each algorithm's requirements; e.g., authenticated encryption requires nonce uniqueness, and an IV is generally not secret. Never build an ad-hoc combined Key+IV primitive for real users.
+- **Research lane:** explore bitfields, structured keys, derived subkeys and camera-conditioned variants, with a documented threat model, attacker control assumptions, replayable fixtures and explicit `EXPERIMENTAL / NOT FOR PRODUCTION` labels.
+- Additional inputs must not replace or reduce the security of CSPRNG output. More layers, more cameras, or better statistical indicators are **not** a cryptographic security guarantee.
+
+### Project observability and governance
+
+After source recovery, adapt to existing repo conventions (do not create duplicate systems):
+
+- `RULES.md` — scope, style, no redundant functions, contracts, testing, security/privacy, architectural boundaries.
+- `TIMELOG.md` — actual work sessions and checkpoints.
+- `CHANGELOG.md` — functionality changes and release/rollback notes.
+- `DECISIONS.md` — decisions and rejected alternatives with reasons.
+- `docs/ARCHITECTURE_ATLAS.md` / optional interactive Atlas — source graph, trust boundaries, source adapters, flow and module statuses.
+- `docs/EXPERIMENTS.md` plus versioned fixtures/results — methods, baselines and reproducibility.
+- `logs/` only for appropriately redacted runtime diagnostics; no private video, camera credentials, tokens or keys. Authentication/access events, if needed, remain access-controlled and retention-limited.
+- PCM checkpoint maps source commit -> tests -> experiment schema -> approved decision -> deploy/rollback reference.
+
+### Immediate next checkpoint (user source upload)
+
+On receipt of the files: identify actual entrypoints, dependencies, camera code, filters, JSON schema, metrics/dashboards, and execution commands; run the original MVP and classify gaps. **First user-visible target:** from a phone, securely view a preview or metrics from a camera connected to the Windows PC. Do not introduce more source types until this is reproducible.
